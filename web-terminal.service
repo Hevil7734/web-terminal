@@ -1,0 +1,19 @@
+[Unit]
+Description=Droidian Web Terminal Server
+After=network.target
+
+[Service]
+Type=simple
+User=droidian
+Group=droidian
+WorkingDirectory=/home/droidian/Projects/web-terminal
+ExecStart=/usr/bin/python3 /home/droidian/Projects/web-terminal/server.py
+Restart=always
+RestartSec=3
+Environment=PORT=8088
+Environment=HOST=127.0.0.1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

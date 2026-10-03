@@ -1,0 +1,34 @@
+# Environment & Secrets
+.env*
+*.key
+*.pem
+*token*
+*secret*
+*credential*
+
+# Platform & Tooling caches
+.gemini/
+.gemini-profiles/
+.claude/
+.openclaw/
+__pycache__/
+*.pyc
+
+# Logs & Databases
+*.log
+*.db
+*.sqlite*
+
+# Backup & Temp files
+*.bak*
+*~
+
+# Binaries & packages
+*.apk
+*.aab
+
+# Unrelated app static assets
+static/*.png
+static/*.aab
+static/*.apk
+static/privacy-policy.html

@@ -1,0 +1,3125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Droidian // Web Terminal (Port 8088)</title>
+  
+  <script>
+    if (window.location.pathname.startsWith('/terminal')) {
+      document.write('<base href="' + window.location.pathname.replace(/\/+$/, '') + '/">');
+    }
+  </script>
+  <link rel="stylesheet" href="static/xterm.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2306b6d4'/><text y='.9em' x='50%' font-size='70' font-family='monospace' font-weight='bold' fill='black' text-anchor='middle'>&gt;_</text></svg>">
+
+  <style>
+    :root {
+      --bg-base: #090d16;
+      --bg-panel: rgba(15, 23, 42, 0.95);
+      --bg-surface: rgba(30, 41, 59, 0.7);
+      --border-color: rgba(255, 255, 255, 0.1);
+      --accent-cyan: #06b6d4;
+      --accent-magenta: #d946ef;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --text-main: #f8fafc;
+      --text-dim: #94a3b8;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-sans: 'Outfit', sans-serif;
+      --app-height: 100dvh;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      position: fixed;
+      overscroll-behavior: none;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      height: var(--app-height, 100dvh);
+      max-height: var(--app-height, 100dvh);
+      width: 100%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      overscroll-behavior: none;
+    }
+
+    /* Fixed helper textarea anchored at (0,0) prevents mobile browser from scrolling container/window on focus */
+    .xterm .xterm-helper-textarea {
+      position: fixed !important;
+      bottom: 0px !important;
+      left: 0px !important;
+      top: auto !important;
+      width: 1px !important;
+      height: 1px !important;
+      opacity: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      border: none !important;
+      outline: none !important;
+      z-index: -1 !important;
+      pointer-events: none;
+    }
+
+    /* Header Nav */
+    header {
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 6px 14px;
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      z-index: 50;
+      flex-shrink: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    @media (max-width: 640px) {
+      header {
+        padding: 4px 8px;
+        gap: 6px;
+      }
+      .brand-title span:last-child {
+        display: none;
+      }
+      .system-stats {
+        display: none;
+      }
+      .brand-logo {
+        width: 26px !important;
+        height: 26px !important;
+        font-size: 13px !important;
+      }
+      button.btn {
+        padding: 4px 7px !important;
+        font-size: 11px !important;
+      }
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-magenta));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-weight: 800;
+      font-size: 16px;
+      color: #000;
+      box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-badge.disconnected {
+      background: rgba(244, 63, 94, 0.15);
+      color: var(--accent-rose);
+      border-color: rgba(244, 63, 94, 0.3);
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 6px currentColor;
+    }
+
+    /* Live Stats Ribbon */
+    .system-stats {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .stat-chip {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      padding: 4px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text-dim);
+    }
+
+    .stat-chip span {
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    /* Controls Section */
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    button.btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s ease;
+    }
+
+    button.btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: var(--accent-cyan);
+    }
+
+    button.btn-accent {
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(217, 70, 239, 0.25));
+      border-color: var(--accent-cyan);
+      color: #38bdf8;
+    }
+
+    select.theme-select {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    /* Ultra-Compact Top Tabs & Control Bar */
+    .tabs-bar {
+      background: #0d121d;
+      border-bottom: 1px solid var(--border-color);
+      padding: 2px 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      height: 32px;
+      z-index: 25;
+    }
+
+    .tabs-scroll-area {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      flex: 1;
+      min-width: 0;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+
+    .tabs-scroll-area::-webkit-scrollbar {
+      display: none;
+    }
+
+    .top-bar-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .tab-item {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-dim);
+      border: 1px solid transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .tab-item.active {
+      background: #090d16;
+      color: var(--accent-cyan);
+      border-color: var(--border-color);
+      border-top: 2px solid var(--accent-cyan);
+    }
+
+    .tab-close {
+      font-size: 13px;
+      opacity: 0.6;
+      cursor: pointer;
+    }
+
+    .tab-close:hover {
+      opacity: 1;
+      color: var(--accent-rose);
+    }
+
+    .btn-new-tab {
+      background: transparent;
+      border: 1px dashed var(--border-color);
+      color: var(--text-dim);
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn-new-tab:hover {
+      color: var(--accent-cyan);
+      border-color: var(--accent-cyan);
+    }
+
+    .btn-config {
+      padding: 3px 7px;
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: var(--text-main);
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .btn-config:active {
+      background: var(--accent-cyan);
+      color: #000;
+    }
+
+    .config-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
+      display: inline-block;
+    }
+
+    .config-dot.disconnected {
+      background: var(--accent-rose);
+      box-shadow: 0 0 6px rgba(244, 63, 94, 0.8);
+    }
+
+    /* Terminal Viewport - Maximized Screen Area */
+    #terminal-container {
+      flex: 1;
+      position: relative;
+      background: #090d16;
+      overflow: hidden;
+      padding: 2px 26px 2px 4px;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    #terminal {
+      width: 100%;
+      height: 100%;
+    }
+
+    .xterm {
+      height: 100%;
+    }
+
+    /* Reconnection Overlay */
+    #reconnect-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(9, 13, 22, 0.85);
+      backdrop-filter: blur(4px);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      z-index: 40;
+    }
+
+    #reconnect-overlay.active {
+      display: flex;
+    }
+
+    /* Smooth touch scrolling inside xterm */
+    .xterm .xterm-viewport {
+      -webkit-overflow-scrolling: touch !important;
+      overscroll-behavior: contain !important;
+      touch-action: pan-y !important;
+    }
+
+    /* Webkit Scrollbar for Desktop / Pointer Scrolling */
+    .xterm .xterm-viewport::-webkit-scrollbar {
+      width: 8px;
+    }
+    .xterm .xterm-viewport::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+      background: rgba(6, 182, 212, 0.4);
+      border-radius: 4px;
+    }
+    .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+      background: var(--accent-cyan);
+    }
+
+    /* Dedicated AGY Chat / Terminal Touch Scrollbar - Optimized for iPhone Safari */
+    .term-scrollbar {
+      position: absolute;
+      top: 6px;
+      bottom: 6px;
+      right: max(2px, env(safe-area-inset-right));
+      width: 36px; /* Generous 36px touch hit area for mobile thumbs */
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      z-index: 28;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: pointer;
+    }
+
+    .term-scroll-track {
+      position: relative;
+      width: 8px;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: width 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .term-scrollbar:hover .term-scroll-track,
+    .term-scrollbar.dragging .term-scroll-track {
+      width: 12px;
+      background: rgba(15, 23, 42, 0.95);
+      border-color: rgba(6, 182, 212, 0.7);
+    }
+
+    .term-scroll-thumb {
+      position: absolute;
+      top: 0;
+      left: -2px;
+      right: -2px;
+      min-height: 44px; /* Apple HIG touch standard target */
+      height: 44px;
+      background: linear-gradient(180deg, var(--accent-cyan), #3b82f6);
+      border-radius: 6px;
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.7);
+      cursor: grab;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      transition: box-shadow 0.15s ease;
+    }
+
+    .term-scroll-thumb:active,
+    .term-scrollbar.dragging .term-scroll-thumb {
+      cursor: grabbing;
+      background: linear-gradient(180deg, #38bdf8, #06b6d4);
+      box-shadow: 0 0 18px rgba(6, 182, 212, 0.95);
+    }
+
+    .thumb-lines {
+      width: 4px;
+      height: 12px;
+      border-top: 2px solid rgba(0, 0, 0, 0.65);
+      border-bottom: 2px solid rgba(0, 0, 0, 0.65);
+      pointer-events: none;
+    }
+
+    .term-scroll-badge {
+      position: absolute;
+      right: 42px;
+      background: rgba(15, 23, 42, 0.96);
+      color: var(--accent-cyan);
+      border: 1px solid var(--accent-cyan);
+      border-radius: 6px;
+      padding: 4px 9px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      transform: translateX(4px);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+      z-index: 29;
+    }
+
+    .term-scrollbar.dragging .term-scroll-badge,
+    .term-scrollbar:hover .term-scroll-badge {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    /* Floating Quick-Scroll to Bottom / End Button */
+    .scroll-bottom-fab {
+      position: absolute;
+      right: 44px;
+      bottom: 18px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid var(--accent-cyan);
+      color: var(--accent-cyan);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 7px 13px;
+      border-radius: 20px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), 0 0 12px rgba(6, 182, 212, 0.35);
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      z-index: 35;
+      transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    .scroll-bottom-fab:hover, .scroll-bottom-fab:active {
+      background: var(--accent-cyan);
+      color: #000;
+      transform: translateY(-2px) scale(1.03);
+      box-shadow: 0 6px 25px rgba(6, 182, 212, 0.6);
+    }
+
+    .scroll-bottom-fab .unread-pill {
+      background: var(--accent-magenta);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 8px;
+      margin-left: 2px;
+    }
+
+    /* Mobile Touch Controls Keybar - Joystick + Two Compact Rows */
+    .mobile-keybar {
+      background: #0d121d;
+      border-top: 1px solid var(--border-color);
+      padding: 4px 6px;
+      padding-bottom: max(4px, env(safe-area-inset-bottom));
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      z-index: 30;
+    }
+
+    /* Tactile Virtual Joystick for Arrow Keys */
+    .joystick-container {
+      flex-shrink: 0;
+      width: 58px;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .joystick-base {
+      position: relative;
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #1e293b, #090d16);
+      border: 1.5px solid rgba(6, 182, 212, 0.45);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7), inset 0 1px 2px rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: pointer;
+    }
+
+    .joystick-base:active,
+    .joystick-base.dragging {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.45), inset 0 1px 3px rgba(255, 255, 255, 0.2);
+    }
+
+    .joy-dir {
+      position: absolute;
+      font-size: 9px;
+      color: rgba(255, 255, 255, 0.35);
+      transition: all 0.1s ease;
+      pointer-events: none;
+      line-height: 1;
+      font-weight: 800;
+      user-select: none;
+    }
+
+    .joy-dir-up {
+      top: 3px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .joy-dir-down {
+      bottom: 3px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .joy-dir-left {
+      left: 3px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    .joy-dir-right {
+      right: 3px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    .joy-dir.active-dir {
+      color: var(--accent-cyan);
+      text-shadow: 0 0 8px var(--accent-cyan), 0 0 14px var(--accent-cyan);
+      opacity: 1;
+    }
+    .joy-dir-up.active-dir {
+      transform: translateX(-50%) scale(1.35);
+    }
+    .joy-dir-down.active-dir {
+      transform: translateX(-50%) scale(1.35);
+    }
+    .joy-dir-left.active-dir {
+      transform: translateY(-50%) scale(1.35);
+    }
+    .joy-dir-right.active-dir {
+      transform: translateY(-50%) scale(1.35);
+    }
+
+    .joystick-knob {
+      position: absolute;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(6, 182, 212, 0.5), rgba(15, 23, 42, 0.95));
+      border: 1.5px solid rgba(6, 182, 212, 0.8);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      transform: translate(0px, 0px);
+      transition: transform 0.12s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 2;
+    }
+
+    .joystick-knob.dragging {
+      transition: none;
+      border-color: #38bdf8;
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.7), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+    }
+
+    .knob-center-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 6px var(--accent-cyan);
+    }
+
+    .keybar-rows-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .keybar-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      flex-shrink: 0;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-x;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(6, 182, 212, 0.4) rgba(255, 255, 255, 0.05);
+      width: 100%;
+      padding: 1px 2px;
+    }
+
+    .keybar-row::-webkit-scrollbar {
+      height: 3px;
+    }
+    .keybar-row::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .keybar-row::-webkit-scrollbar-thumb {
+      background: rgba(6, 182, 212, 0.4);
+      border-radius: 2px;
+    }
+
+    .key-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 9px;
+      border-radius: 5px;
+      min-width: 32px;
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: pan-x;
+      transition: all 0.1s ease;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .key-btn:active {
+      background: var(--accent-cyan);
+      color: #000;
+    }
+
+    .key-btn.action-arrow {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.25);
+      color: #f8fafc;
+      font-weight: 700;
+      font-size: 13px;
+      min-width: 36px;
+    }
+
+    .key-btn.action-arrow:active {
+      background: var(--accent-cyan);
+      color: #000;
+    }
+
+    .key-btn.action-enter {
+      background: rgba(6, 182, 212, 0.22);
+      border-color: rgba(6, 182, 212, 0.55);
+      color: #38bdf8;
+      font-weight: 700;
+      min-width: 62px;
+    }
+
+    .key-btn.action-enter:active {
+      background: var(--accent-cyan);
+      color: #000;
+    }
+
+    .key-btn.action-backspace {
+      color: #fb7185;
+      border-color: rgba(251, 113, 133, 0.35);
+      font-weight: 700;
+      min-width: 36px;
+    }
+
+    .key-btn.action-backspace:active {
+      background: var(--accent-rose);
+      color: #fff;
+    }
+
+    .key-btn.active-modifier {
+      background: var(--accent-cyan);
+      color: #000;
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+    }
+
+    /* On/Off Keyboard Toggle State */
+    .key-btn.btn-keyboard-toggle,
+    button.btn.btn-keyboard-toggle {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.25);
+      color: var(--text-dim);
+      font-weight: 700;
+    }
+
+    .key-btn.btn-keyboard-toggle.active-kb,
+    button.btn.btn-keyboard-toggle.active-kb {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(6, 182, 212, 0.35));
+      border-color: var(--accent-green);
+      color: #34d399;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    }
+
+    .key-btn.action-cmd {
+      background: rgba(59, 130, 246, 0.2);
+      border-color: rgba(59, 130, 246, 0.45);
+      color: #60a5fa;
+      font-weight: 700;
+    }
+
+    .key-btn.action-cmd:active {
+      background: #3b82f6;
+      color: #fff;
+    }
+
+    .key-btn.action-danger {
+      color: var(--accent-rose);
+      border-color: rgba(244, 63, 94, 0.3);
+    }
+
+    .key-btn.action-danger:active {
+      background: var(--accent-rose);
+      color: #fff;
+    }
+
+    .key-btn.action-nav {
+      background: rgba(6, 182, 212, 0.15);
+      border-color: rgba(6, 182, 212, 0.4);
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+
+    .key-btn.action-nav:active {
+      background: var(--accent-cyan);
+      color: #000;
+    }
+
+    /* Configuration & System Info Modal */
+    .config-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(9, 13, 22, 0.85);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      padding: 16px;
+    }
+    .config-modal-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--accent-cyan);
+      box-shadow: 0 0 35px rgba(6, 182, 212, 0.35);
+      border-radius: 12px;
+      padding: 18px;
+      max-width: 480px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: modalFadeIn 0.2s ease-out;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .config-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 10px;
+    }
+    .config-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .config-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .config-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    /* Terminal Paste Box & File Upload UI */
+    .paste-box-input {
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.4;
+      resize: vertical;
+      min-height: 64px;
+      max-height: 160px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .paste-box-input:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+    }
+    .file-upload-dropzone {
+      border: 1.5px dashed rgba(6, 182, 212, 0.4);
+      border-radius: 8px;
+      background: rgba(6, 182, 212, 0.05);
+      padding: 12px 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+    .file-upload-dropzone:hover, .file-upload-dropzone.dragover {
+      border-color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.12);
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.2);
+    }
+    .recent-upload-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 5px;
+      padding: 5px 8px;
+      font-size: 11px;
+    }
+    .recent-upload-item:hover {
+      border-color: rgba(6, 182, 212, 0.4);
+    }
+
+    /* Web Link Redirect Modal & Toast */
+    .redirect-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(9, 13, 22, 0.82);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      padding: 16px;
+    }
+    .redirect-modal-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--accent-cyan);
+      box-shadow: 0 0 35px rgba(6, 182, 212, 0.35);
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 500px;
+      width: 100%;
+      animation: modalFadeIn 0.2s ease-out;
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .terminal-toast {
+      position: fixed;
+      bottom: 70px;
+      left: 50%;
+      transform: translateX(-50%) translateY(25px);
+      background: rgba(9, 13, 22, 0.94);
+      border: 1px solid var(--accent-cyan);
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 9px 18px;
+      border-radius: 8px;
+      pointer-events: none;
+      opacity: 0;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 10001;
+      white-space: nowrap;
+      max-width: 90vw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .terminal-toast.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .xterm-cursor-pointer, .xterm-cursor-pointer * {
+      cursor: pointer !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ultra-Compact Top Bar: Tabs + Handy KB Toggle + ⚙️ Config Button -->
+  <div class="tabs-bar">
+    <div class="tabs-scroll-area" id="tabs-scroll-area">
+      <!-- Populated by JS -->
+      <button class="btn-new-tab" onclick="createNewTab()">+ New Tab</button>
+    </div>
+    <div class="top-bar-controls">
+      <button class="btn btn-keyboard-toggle" onclick="toggleKeyboard()" title="Toggle On-Screen Keyboard">⌨️ KB: OFF</button>
+      <button class="btn btn-config" onclick="toggleConfigModal()" title="Terminal Tuning, Paste & Upload Tools">
+        <span class="config-dot" id="top-status-dot"></span>
+        <span style="font-size: 13px;">⚙️</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Terminal Viewport -->
+  <div id="terminal-container">
+    <div id="terminal"></div>
+    
+    <!-- Dedicated AGY Chat / Terminal Touch Scrollbar -->
+    <div id="terminal-scrollbar" class="term-scrollbar" title="Drag or tap to scroll agy chat">
+      <div class="term-scroll-track" id="term-scroll-track">
+        <div class="term-scroll-thumb" id="term-scroll-thumb">
+          <div class="thumb-lines"></div>
+        </div>
+      </div>
+      <div class="term-scroll-badge" id="term-scroll-badge">100%</div>
+    </div>
+
+    <!-- Floating Quick-Scroll to Bottom / End Button -->
+    <button id="btn-scroll-bottom" class="scroll-bottom-fab" onclick="jumpToBottom()" title="Jump to Latest / Prompt">
+      <span>⤓ End</span>
+      <span id="unread-count" class="unread-pill" style="display: none;">0</span>
+    </button>
+    <div id="reconnect-overlay">
+      <h3 style="color: var(--accent-cyan); font-size: 18px;">⚡ Disconnected (Session Preserved)</h3>
+      <p style="color: var(--text-dim); font-size: 14px;">Your bash session and running background tasks remain active.</p>
+      <div style="display: flex; gap: 8px; margin-top: 10px;">
+        <button class="btn btn-accent" onclick="reconnectTerminal(true)" style="padding: 10px 20px; font-size: 14px;">⚡ Reconnect Session</button>
+        <button class="btn" onclick="resetCurrentSession()" style="padding: 10px 16px; font-size: 14px; border-color: rgba(244, 63, 94, 0.4); color: var(--accent-rose);">🔄 Reset Session</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Touch Helper Dock -->
+  <div class="mobile-keybar" id="mobile-keybar">
+    <!-- Tactile Virtual Joystick for Arrow Keys -->
+    <div class="joystick-container" id="joystick-container">
+      <div class="joystick-base" id="joystick-base" title="Joystick: Drag or tilt to control arrow keys">
+        <span class="joy-dir joy-dir-up" id="joy-arrow-up">▲</span>
+        <span class="joy-dir joy-dir-right" id="joy-arrow-right">▶</span>
+        <span class="joy-dir joy-dir-down" id="joy-arrow-down">▼</span>
+        <span class="joy-dir joy-dir-left" id="joy-arrow-left">◀</span>
+        <div class="joystick-knob" id="joystick-knob">
+          <div class="knob-center-dot"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scrollable Button Rows -->
+    <div class="keybar-rows-wrapper" id="keybar-rows-wrapper">
+      <!-- Top Bar: Most Used (Enter, Backspace, Tab, Esc, Interrupt, Jump to End) -->
+      <div class="keybar-row keybar-row-top" id="keybar-row-top">
+        <button class="key-btn action-arrow classic-arrow-btn" onclick="sendSpecial('UP')" title="Up Arrow (History)" style="display: none;">▲</button>
+        <button class="key-btn action-arrow classic-arrow-btn" onclick="sendSpecial('DOWN')" title="Down Arrow (History)" style="display: none;">▼</button>
+        <button class="key-btn action-arrow classic-arrow-btn" onclick="sendSpecial('LEFT')" title="Left Arrow" style="display: none;">◀</button>
+        <button class="key-btn action-arrow classic-arrow-btn" onclick="sendSpecial('RIGHT')" title="Right Arrow" style="display: none;">▶</button>
+        <button class="key-btn action-enter" onclick="sendRaw('\r')" title="Enter / Execute">↵ Enter</button>
+        <button class="key-btn action-backspace" onclick="sendRaw('\x7f')" title="Backspace">⌫</button>
+        <button class="key-btn" onclick="sendSpecial('TAB')" title="Auto-complete">TAB</button>
+        <button class="key-btn" onclick="sendSpecial('ESC')" title="Escape">ESC</button>
+        <button class="key-btn action-danger" onclick="sendControlChar('c')" title="Cancel / SIGINT">^C</button>
+        <button class="key-btn action-nav" onclick="jumpToBottom()" title="Jump to End / Prompt">⤓ END</button>
+      </div>
+
+    <!-- Bottom Bar: Modifiers, Signals, Page Navigation, Macros & Shell Characters -->
+    <div class="keybar-row keybar-row-bottom" id="keybar-row-bottom">
+      <button class="key-btn" id="key-ctrl" onclick="toggleCtrl()">CTRL</button>
+      <button class="key-btn" id="key-alt" onclick="toggleAlt()">ALT</button>
+      <button class="key-btn action-danger" onclick="sendControlChar('z')" title="Suspend / SIGTSTP">^Z</button>
+      <button class="key-btn action-danger" onclick="sendControlChar('d')" title="EOF / Exit">^D</button>
+      <button class="key-btn action-nav" onclick="scrollPage(-1)" title="Page Up">PgUp</button>
+      <button class="key-btn action-nav" onclick="scrollPage(1)" title="Page Down">PgDn</button>
+      <button class="key-btn action-nav" onclick="jumpToTop()" title="Jump to Top">⤒ TOP</button>
+      <button class="key-btn action-cmd" onclick="sendRaw('agy\n')" title="Start Antigravity CLI">⚡ agy</button>
+      <button class="key-btn action-cmd" onclick="sendRaw('clear\n')" title="Clear Screen">🧹 clear</button>
+      <button class="key-btn action-cmd" onclick="sendRaw('htop\n')" title="Resource Monitor">📊 htop</button>
+      <button class="key-btn" onclick="sendRaw('|')">|</button>
+      <button class="key-btn" onclick="sendRaw('/')">/</button>
+      <button class="key-btn" onclick="sendRaw('-')">-</button>
+      <button class="key-btn" onclick="sendRaw('_')">_</button>
+      <button class="key-btn" onclick="sendRaw('~')">~</button>
+      <button class="key-btn" onclick="sendRaw('$')">$</button>
+      <button class="key-btn" onclick="sendRaw(';')">;</button>
+      <button class="key-btn" onclick="sendRaw(':')">:</button>
+    </div>
+  </div>
+</div>
+
+  <!-- Link Redirect Modal -->
+  <div class="redirect-modal-backdrop" id="linkRedirectModal" style="display: none;" onclick="if(event.target===this) closeLinkRedirectModal()">
+    <div class="redirect-modal-box">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 style="margin: 0; font-family: var(--font-heading); font-size: 16px; color: var(--accent-cyan); display: flex; align-items: center; gap: 6px;">
+          <span>🔗</span> Open Web Link Redirect
+        </h3>
+        <button class="btn" style="padding: 2px 8px; font-size: 13px;" onclick="closeLinkRedirectModal()">✕</button>
+      </div>
+      <p style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-dim);">The terminal requested to open this web link:</p>
+      <div id="modalRedirectUrl" style="background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; font-family: var(--font-mono); font-size: 12px; color: #38bdf8; word-break: break-all; margin-bottom: 16px; user-select: all;"></div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;">
+        <button class="btn" onclick="copyRedirectModalUrl()">📋 Copy URL</button>
+        <a id="btnModalOpenLink" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-accent" style="text-decoration: none; display: inline-flex; align-items: center; gap: 4px;" onclick="closeLinkRedirectModal()">🚀 Open Link</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Configuration & System Info Modal (Triggered by ⚙️) -->
+  <div class="config-modal-backdrop" id="configModal" style="display: none;" onclick="if(event.target===this) toggleConfigModal(false)">
+    <div class="config-modal-box">
+      <div class="config-modal-header">
+        <h3 style="margin: 0; font-family: var(--font-heading); font-size: 15px; color: var(--accent-cyan); display: flex; align-items: center; gap: 8px;">
+          <span>⚙️</span> Terminal Tuning, Tools & Info
+        </h3>
+        <button class="btn" style="padding: 2px 8px; font-size: 13px;" onclick="toggleConfigModal(false)">✕</button>
+      </div>
+
+      <!-- Section: Status & Active Session -->
+      <div class="config-section">
+        <div class="config-section-title">Connection Status</div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(0,0,0,0.35); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+          <div class="status-badge" id="status-badge">
+            <span class="dot"></span>
+            <span id="status-text">CONNECTING...</span>
+          </div>
+          <span style="font-family: var(--font-mono); font-size: 11px; color: var(--accent-cyan);">PERSISTENT</span>
+        </div>
+      </div>
+
+      <!-- Section: Live System Hardware Stats -->
+      <div class="config-section">
+        <div class="config-section-title">System Metrics</div>
+        <div class="system-stats" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+          <div class="stat-chip" id="chip-cpu">CPU: <span>--%</span></div>
+          <div class="stat-chip" id="chip-ram">RAM: <span>--/--</span></div>
+          <div class="stat-chip" id="chip-bat">BAT: <span>--%</span></div>
+          <div class="stat-chip" id="chip-up">UP: <span>--</span></div>
+        </div>
+      </div>
+
+      <!-- Section: Terminal Paste Box -->
+      <div class="config-section">
+        <div class="config-section-title" style="display: flex; justify-content: space-between; align-items: center;">
+          <span>📋 Terminal Paste Box</span>
+          <span style="font-size: 10px; font-weight: normal; color: var(--text-dim); text-transform: none;">Send directly to bash</span>
+        </div>
+        <textarea id="terminal-paste-input" class="paste-box-input" placeholder="Type or paste text, scripts, or commands here..." rows="3"></textarea>
+        <div class="config-row" style="gap: 6px;">
+          <button class="btn btn-accent" onclick="pasteBoxSend(false)" style="flex: 2; min-width: 120px; justify-content: center;" title="Send text to terminal">📋 Paste to Terminal</button>
+          <button class="btn btn-accent" onclick="pasteBoxSend(true)" style="flex: 1.5; min-width: 100px; justify-content: center; background: rgba(16, 185, 129, 0.2); border-color: var(--accent-green); color: var(--accent-green);" title="Send text and press Enter">↵ Paste & Run</button>
+          <button class="btn" onclick="pasteBoxFromClipboard()" style="flex: 1; min-width: 70px; justify-content: center;" title="Paste from clipboard">📄 Clipboard</button>
+          <button class="btn" onclick="pasteBoxClear()" style="padding: 4px 8px;" title="Clear paste box">✕</button>
+        </div>
+      </div>
+
+      <!-- Section: Upload Picture or File & Insert Location -->
+      <div class="config-section">
+        <div class="config-section-title" style="display: flex; justify-content: space-between; align-items: center;">
+          <span>📁 File & Picture Upload</span>
+          <span style="font-size: 10px; font-weight: normal; color: var(--text-dim); text-transform: none;">Save to /home/droidian/uploads</span>
+        </div>
+
+        <input type="file" id="terminal-file-picker" style="display: none;" onchange="handleTerminalFileUpload(event)">
+        
+        <!-- Drag & Drop / Tap Zone -->
+        <div id="file-drop-zone" class="file-upload-dropzone" onclick="document.getElementById('terminal-file-picker').click()">
+          <div style="font-size: 22px; margin-bottom: 2px;" id="upload-icon-display">📤</div>
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);" id="upload-status-text">Tap or Drop to Upload Picture or File</div>
+          <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">Images, scripts, documents, archives (all files accepted)</div>
+        </div>
+
+        <!-- Upload Progress & Result Card (Hidden by default, shown after select/upload) -->
+        <div id="upload-result-card" style="display: none; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-top: 4px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div id="upload-preview-container" style="width: 44px; height: 44px; border-radius: 6px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; border: 1px solid var(--border-color);">
+              <span id="upload-preview-fallback" style="font-size: 20px;">📄</span>
+              <img id="upload-preview-img" style="width: 100%; height: 100%; object-fit: cover; display: none;" alt="Preview">
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div id="uploaded-filename" style="font-weight: 600; font-size: 12px; color: var(--accent-cyan); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">filename.ext</div>
+              <div id="uploaded-filesize" style="font-size: 11px; color: var(--text-dim);">0 KB</div>
+              <div id="uploaded-filepath-display" style="font-family: var(--font-mono); font-size: 10px; color: #94a3b8; word-break: break-all; margin-top: 2px; user-select: all;">/home/droidian/uploads/...</div>
+            </div>
+          </div>
+
+          <!-- Buttons for Insert Location to Terminal -->
+          <div style="display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;">
+            <button class="btn btn-accent" id="btn-insert-location" onclick="insertLocationToTerminal(false)" style="flex: 2; min-width: 140px; justify-content: center;" title="Insert path into terminal prompt">
+              📍 Insert Location to Terminal
+            </button>
+            <button class="btn btn-accent" id="btn-insert-location-close" onclick="insertLocationToTerminal(true)" style="flex: 1.5; min-width: 110px; justify-content: center; background: rgba(6, 182, 212, 0.25);" title="Insert path and close settings">
+              📍 Insert & Close
+            </button>
+            <button class="btn" onclick="copyUploadedPath()" style="flex: 1; min-width: 70px; justify-content: center;" title="Copy file path to clipboard">
+              📋 Copy Path
+            </button>
+          </div>
+        </div>
+
+        <!-- Recent Uploads Quick List (Collapsible / Compact) -->
+        <div id="recent-uploads-section" style="display: none; margin-top: 6px;">
+          <div style="font-size: 10px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+            <span>Recent Uploads</span>
+            <span style="cursor: pointer; color: var(--accent-cyan);" onclick="loadRecentUploads()">🔄 Refresh</span>
+          </div>
+          <div id="recent-uploads-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto;">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Color Theme -->
+      <div class="config-section">
+        <div class="config-section-title">Color Theme</div>
+        <select class="theme-select" id="theme-select" style="width: 100%; padding: 8px 10px;">
+          <option value="cyberpunk">Cyberpunk Neon</option>
+          <option value="matrix">Matrix Green</option>
+          <option value="tokyo">Tokyo Night</option>
+          <option value="dracula">Dracula Dark</option>
+          <option value="monokai">Monokai Pro</option>
+          <option value="nord">Nord Frost</option>
+        </select>
+      </div>
+
+      <!-- Section: Terminal Font Size -->
+      <div class="config-section">
+        <div class="config-section-title">Terminal Font Size</div>
+        <div class="config-row" style="align-items: center;">
+          <button class="btn" id="btn-font-dec" style="flex: 1; justify-content: center;">A- Smaller</button>
+          <span id="font-size-display" style="font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--accent-cyan); min-width: 48px; text-align: center;">10px</span>
+          <button class="btn" id="btn-font-inc" style="flex: 1; justify-content: center;">A+ Larger</button>
+          <button class="btn" onclick="resetFontSize()" title="Reset to smallest visible (10px)">Reset (10px)</button>
+        </div>
+      </div>
+
+      <!-- Section: Navigation Control Style -->
+      <div class="config-section">
+        <div class="config-section-title">Arrow Navigation Style</div>
+        <div class="config-row">
+          <button class="btn btn-accent" id="btn-mode-joystick" onclick="setNavMode('joystick')" style="flex: 1; justify-content: center;">🕹️ Joystick</button>
+          <button class="btn" id="btn-mode-buttons" onclick="setNavMode('buttons')" style="flex: 1; justify-content: center;">◀▲▼▶ Buttons</button>
+        </div>
+      </div>
+
+      <!-- Section: Actions -->
+      <div class="config-section">
+        <div class="config-section-title">Quick Actions</div>
+        <div class="config-row">
+          <button class="btn" id="btn-fullscreen" style="flex: 1; justify-content: center;">⛶ Fullscreen</button>
+          <button class="btn" onclick="resetCurrentSession()" style="flex: 1; justify-content: center; color: var(--accent-rose); border-color: rgba(244,63,94,0.4);">🔄 Reset Session</button>
+          <a class="btn btn-accent" id="btn-cpanel" href="/" target="_blank" style="flex: 1; justify-content: center; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">📱 DroidPanel</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cyberpunk Toast -->
+  <div id="terminal-toast" class="terminal-toast"></div>
+
+  <!-- Dependencies -->
+  <script src="static/xterm.js"></script>
+  <script src="static/xterm-addon-fit.js"></script>
+  <script src="static/xterm-addon-web-links.js"></script>
+
+  <script>
+    const THEMES = {
+      cyberpunk: {
+        background: '#090d16',
+        foreground: '#f8fafc',
+        cursor: '#06b6d4',
+        cursorAccent: '#090d16',
+        selectionBackground: 'rgba(6, 182, 212, 0.3)',
+        black: '#1e293b',
+        red: '#f43f5e',
+        green: '#10b981',
+        yellow: '#f59e0b',
+        blue: '#3b82f6',
+        magenta: '#d946ef',
+        cyan: '#06b6d4',
+        white: '#f8fafc'
+      },
+      matrix: {
+        background: '#040d06',
+        foreground: '#00ff66',
+        cursor: '#00ff66',
+        cursorAccent: '#040d06',
+        selectionBackground: 'rgba(0, 255, 102, 0.25)',
+        black: '#0d2611',
+        red: '#ff0055',
+        green: '#00ff66',
+        yellow: '#b5e853',
+        blue: '#00ccff',
+        magenta: '#d946ef',
+        cyan: '#5dfcd4',
+        white: '#e6ffe6'
+      },
+      tokyo: {
+        background: '#1a1b26',
+        foreground: '#a9b1d6',
+        cursor: '#c0caf5',
+        cursorAccent: '#1a1b26',
+        selectionBackground: '#33467c',
+        black: '#32344a',
+        red: '#f7768e',
+        green: '#9ece6a',
+        yellow: '#e0af68',
+        blue: '#7aa2f7',
+        magenta: '#bb9af7',
+        cyan: '#7dcfff',
+        white: '#acb0d0'
+      },
+      dracula: {
+        background: '#282a36',
+        foreground: '#f8f8f2',
+        cursor: '#f8f8f2',
+        cursorAccent: '#282a36',
+        selectionBackground: '#44475a',
+        black: '#21222c',
+        red: '#ff5555',
+        green: '#50fa7b',
+        yellow: '#f1fa8c',
+        blue: '#bd93f9',
+        magenta: '#ff79c6',
+        cyan: '#8be9fd',
+        white: '#f8f8f2'
+      },
+      monokai: {
+        background: '#272822',
+        foreground: '#f8f8f2',
+        cursor: '#f8f8f0',
+        cursorAccent: '#272822',
+        selectionBackground: '#49483e',
+        black: '#333333',
+        red: '#f92672',
+        green: '#a6e22e',
+        yellow: '#f4bf75',
+        blue: '#66d9ef',
+        magenta: '#ae81ff',
+        cyan: '#a1efe4',
+        white: '#f8f8f2'
+      },
+      nord: {
+        background: '#2e3440',
+        foreground: '#d8dee9',
+        cursor: '#88c0d0',
+        cursorAccent: '#2e3440',
+        selectionBackground: '#434c5e',
+        black: '#3b4252',
+        red: '#bf616a',
+        green: '#a3be8c',
+        yellow: '#ebcb8b',
+        blue: '#81a1c1',
+        magenta: '#b48ead',
+        cyan: '#88c0d0',
+        white: '#e5e9f0'
+      }
+    };
+
+    let term = null;
+    let fitAddon = null;
+    let ws = null;
+    let currentFontSize = parseInt(localStorage.getItem('droidian_term_font_size')) || 10;
+    let ctrlActive = false;
+    let altActive = false;
+    let activeSessionId = localStorage.getItem('droidian_term_last_session') || "session-1";
+    let autoReconnectTimer = null;
+    let tabCount = 1;
+
+    function toggleConfigModal(forceState) {
+      const modal = document.getElementById('configModal');
+      if (!modal) return;
+      const show = forceState !== undefined ? forceState : (modal.style.display === 'none');
+      modal.style.display = show ? 'flex' : 'none';
+      if (show) {
+        updateFontSizeDisplay();
+        updateSystemStats();
+        applyNavMode();
+        loadRecentUploads();
+        setupDropZone();
+      }
+    }
+
+    function updateFontSizeDisplay() {
+      const disp = document.getElementById('font-size-display');
+      if (disp) disp.innerText = `${currentFontSize}px`;
+      localStorage.setItem('droidian_term_font_size', currentFontSize);
+    }
+
+    function resetFontSize() {
+      currentFontSize = 10;
+      if (term) term.options.fontSize = currentFontSize;
+      updateFontSizeDisplay();
+      onResize();
+      showTerminalToast('🔤 Font reset to 10px');
+    }
+
+    // ==========================================
+    // Paste Box & File Upload Helpers
+    // ==========================================
+    let currentUploadedFile = null;
+    let dropZoneInitialized = false;
+
+    function pasteBoxSend(withEnter = false) {
+      const input = document.getElementById('terminal-paste-input');
+      if (!input) return;
+      const text = input.value;
+      if (!text) {
+        showTerminalToast('⚠️ Paste box is empty');
+        return;
+      }
+      sendRaw(text + (withEnter ? '\r' : ''));
+      showTerminalToast(withEnter ? '↵ Pasted & executed' : '📋 Pasted to terminal');
+    }
+
+    async function pasteBoxFromClipboard() {
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text) {
+            const input = document.getElementById('terminal-paste-input');
+            if (input) {
+              input.value = text;
+              input.focus();
+            }
+            showTerminalToast('📋 Pasted from clipboard');
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Clipboard read error:', e);
+      }
+      showTerminalToast('ℹ️ Tap and hold paste box to paste');
+    }
+
+    function pasteBoxClear() {
+      const input = document.getElementById('terminal-paste-input');
+      if (input) input.value = '';
+    }
+
+    async function uploadFileObject(file) {
+      if (!file) return;
+      const statusText = document.getElementById('upload-status-text');
+      const iconDisplay = document.getElementById('upload-icon-display');
+      const resultCard = document.getElementById('upload-result-card');
+      
+      if (statusText) statusText.innerText = `⏳ Uploading "${file.name}"...`;
+      if (iconDisplay) iconDisplay.innerText = '⏳';
+
+      try {
+        const reader = new FileReader();
+        const b64Promise = new Promise((resolve, reject) => {
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+        });
+        reader.readAsDataURL(file);
+        const dataUrl = await b64Promise;
+
+        const payload = JSON.stringify({
+          filename: file.name,
+          data: dataUrl
+        });
+
+        let resp = null;
+        try {
+          resp = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload
+          });
+        } catch(e) {
+          resp = await fetch('/terminal/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload
+          });
+        }
+
+        if (!resp || !resp.ok) {
+          throw new Error(`Upload failed: ${resp ? resp.statusText : 'Network error'}`);
+        }
+
+        const data = await resp.json();
+        if (!data.success) {
+          throw new Error(data.error || 'Server rejected upload');
+        }
+
+        currentUploadedFile = data;
+        
+        if (statusText) statusText.innerText = 'Tap or Drop to Upload Picture or File';
+        if (iconDisplay) iconDisplay.innerText = '✅';
+        setTimeout(() => { if (iconDisplay) iconDisplay.innerText = '📤'; }, 2000);
+
+        const filenameEl = document.getElementById('uploaded-filename');
+        const filesizeEl = document.getElementById('uploaded-filesize');
+        const filepathEl = document.getElementById('uploaded-filepath-display');
+        const previewImg = document.getElementById('upload-preview-img');
+        const previewFallback = document.getElementById('upload-preview-fallback');
+
+        if (filenameEl) filenameEl.innerText = data.filename;
+        if (filesizeEl) filesizeEl.innerText = formatFileSize(data.size);
+        if (filepathEl) filepathEl.innerText = data.path;
+
+        if (data.is_image) {
+          if (previewImg) {
+            previewImg.src = data.url;
+            previewImg.style.display = 'block';
+          }
+          if (previewFallback) previewFallback.style.display = 'none';
+        } else {
+          if (previewImg) previewImg.style.display = 'none';
+          if (previewFallback) {
+            previewFallback.style.display = 'block';
+            previewFallback.innerText = getFileIcon(data.filename);
+          }
+        }
+
+        if (resultCard) resultCard.style.display = 'block';
+        showTerminalToast(`✅ Uploaded: ${data.filename}`);
+        loadRecentUploads();
+      } catch (err) {
+        console.error('File upload error:', err);
+        if (statusText) statusText.innerText = `❌ Error: ${err.message}`;
+        if (iconDisplay) iconDisplay.innerText = '⚠️';
+        showTerminalToast(`❌ Upload error: ${err.message}`);
+      }
+    }
+
+    function handleTerminalFileUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (file) {
+        uploadFileObject(file);
+      }
+      event.target.value = '';
+    }
+
+    function formatFileSize(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function getFileIcon(name) {
+      const ext = (name.split('.').pop() || '').toLowerCase();
+      if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return '🖼️';
+      if (['zip', 'tar', 'gz', 'bz2', '7z', 'xz'].includes(ext)) return '📦';
+      if (['py', 'js', 'sh', 'bash', 'c', 'cpp', 'html', 'css', 'json'].includes(ext)) return '📜';
+      if (['apk', 'deb'].includes(ext)) return '📱';
+      if (['txt', 'md', 'log'].includes(ext)) return '📝';
+      return '📄';
+    }
+
+    function insertLocationToTerminal(closeModal = false, customPath = null) {
+      const targetPath = customPath || (currentUploadedFile && currentUploadedFile.path);
+      if (!targetPath) {
+        showTerminalToast('⚠️ No uploaded file selected');
+        return;
+      }
+
+      const formatted = targetPath.includes(' ') ? `"${targetPath}" ` : `${targetPath} `;
+      sendRaw(formatted);
+      showTerminalToast(`📍 Inserted location to terminal!`);
+
+      if (closeModal) {
+        toggleConfigModal(false);
+      }
+    }
+
+    function copyUploadedPath(customPath = null) {
+      const targetPath = customPath || (currentUploadedFile && currentUploadedFile.path);
+      if (!targetPath) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(targetPath);
+        showTerminalToast('📋 Path copied to clipboard');
+      } else {
+        showTerminalToast(`Path: ${targetPath}`);
+      }
+    }
+
+    async function loadRecentUploads() {
+      try {
+        let resp = await fetch('/api/uploads');
+        if (!resp.ok) {
+          resp = await fetch('/terminal/api/uploads');
+        }
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const list = document.getElementById('recent-uploads-list');
+        const section = document.getElementById('recent-uploads-section');
+        if (!list || !section) return;
+
+        if (data.uploads && data.uploads.length > 0) {
+          section.style.display = 'block';
+          list.innerHTML = data.uploads.map(u => {
+            const icon = u.is_image ? '🖼️' : getFileIcon(u.filename);
+            const escapedPath = u.path.replace(/'/g, "\\'");
+            return `
+              <div class="recent-upload-item">
+                <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; flex: 1;">
+                  <span>${icon}</span>
+                  <span style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main);" title="${u.path}">${u.filename}</span>
+                  <span style="color: var(--text-dim); font-size: 10px;">(${formatFileSize(u.size)})</span>
+                </div>
+                <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                  <button class="btn" style="padding: 2px 6px; font-size: 10px;" onclick="copyUploadedPath('${escapedPath}')" title="Copy Path">📋</button>
+                  <button class="btn btn-accent" style="padding: 2px 6px; font-size: 10px;" onclick="insertLocationToTerminal(false, '${escapedPath}')" title="Insert Location">📍 Insert</button>
+                </div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          section.style.display = 'none';
+        }
+      } catch (e) {
+        console.warn('Failed to load recent uploads:', e);
+      }
+    }
+
+    function setupDropZone() {
+      if (dropZoneInitialized) return;
+      const dropZone = document.getElementById('file-drop-zone');
+      if (!dropZone) return;
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.classList.add('dragover');
+        }, false);
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.classList.remove('dragover');
+        }, false);
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files && files.length > 0) {
+          uploadFileObject(files[0]);
+        }
+      }, false);
+
+      dropZoneInitialized = true;
+    }
+
+    function saveTabsState() {
+      const tabs = [];
+      document.querySelectorAll('.tab-item').forEach(t => {
+        const idStr = t.id.replace('tab-', '');
+        tabs.push(parseInt(idStr));
+      });
+      localStorage.setItem('droidian_term_tabs', JSON.stringify(tabs));
+      localStorage.setItem('droidian_term_last_session', activeSessionId);
+    }
+
+    function restoreTabs() {
+      let savedTabs = [1];
+      try {
+        const raw = localStorage.getItem('droidian_term_tabs');
+        if (raw) savedTabs = JSON.parse(raw);
+      } catch (e) {}
+      if (!savedTabs || !savedTabs.length) savedTabs = [1];
+      if (!savedTabs.includes(1)) savedTabs.unshift(1);
+
+      const savedActive = localStorage.getItem('droidian_term_last_session') || 'session-1';
+      activeSessionId = savedActive;
+
+      const newBtn = document.querySelector('.btn-new-tab');
+      document.querySelectorAll('.tab-item').forEach(t => t.remove());
+
+      savedTabs.forEach(idx => {
+        if (idx > tabCount) tabCount = idx;
+        const tab = document.createElement('div');
+        const sId = `session-${idx}`;
+        tab.className = `tab-item ${sId === activeSessionId ? 'active' : ''}`;
+        tab.id = `tab-${idx}`;
+        tab.innerHTML = `<span>🐚 Session ${idx}</span> ${idx > 1 ? `<span class="tab-close" onclick="closeTab(event, ${idx})">×</span>` : ''}`;
+        tab.onclick = () => switchTab(idx);
+        if (newBtn && newBtn.parentNode) {
+          newBtn.parentNode.insertBefore(tab, newBtn);
+        }
+      });
+    }
+
+    let isReplayingBacklog = true;
+    let backlogEndTimer = null;
+    let unreadLines = 0;
+
+    function isUserAtBottom() {
+      if (!term || !term.buffer || !term.buffer.active) return true;
+      const buf = term.buffer.active;
+      return (buf.baseY - buf.viewportY) <= 1;
+    }
+
+    function updateScrollIndicator() {
+      const fab = document.getElementById('btn-scroll-bottom');
+      if (!fab || !term || !term.buffer || !term.buffer.active) return;
+      const buf = term.buffer.active;
+      const atBottom = (buf.baseY - buf.viewportY) <= 1;
+
+      if (!atBottom && buf.baseY > 0) {
+        fab.style.display = 'inline-flex';
+      } else {
+        fab.style.display = 'none';
+        unreadLines = 0;
+        const unreadEl = document.getElementById('unread-count');
+        if (unreadEl) unreadEl.style.display = 'none';
+      }
+      updateCustomScrollbar();
+    }
+
+    function jumpToBottom() {
+      if (term) {
+        term.scrollToBottom();
+        unreadLines = 0;
+        const unreadEl = document.getElementById('unread-count');
+        if (unreadEl) unreadEl.style.display = 'none';
+        const fab = document.getElementById('btn-scroll-bottom');
+        if (fab) fab.style.display = 'none';
+        updateCustomScrollbar();
+      }
+    }
+
+    function jumpToTop() {
+      if (term) {
+        term.scrollToTop();
+        updateScrollIndicator();
+        updateCustomScrollbar();
+      }
+    }
+
+    function scrollPage(dir) {
+      if (term) {
+        term.scrollPages(dir);
+        updateScrollIndicator();
+        updateCustomScrollbar();
+      }
+    }
+
+    // Explicit On/Off Keyboard Management & Touch Scroll States
+    let keyboardActive = false;
+    let isTouchScrolling = false;
+    let isScrollbarDragging = false;
+    let isKeyboardToggling = false;
+
+    function toggleKeyboard(forceState) {
+      isKeyboardToggling = true;
+      setTimeout(() => { isKeyboardToggling = false; }, 800);
+
+      const wasAtBottom = isUserAtBottom();
+      keyboardActive = forceState !== undefined ? forceState : !keyboardActive;
+      const helper = document.querySelector('.xterm-helper-textarea');
+      const kbBtns = document.querySelectorAll('.btn-keyboard-toggle');
+
+      if (keyboardActive) {
+        if (helper) {
+          helper.readOnly = false;
+          helper.removeAttribute('readonly');
+          helper.removeAttribute('inputmode');
+          helper.style.pointerEvents = 'auto';
+          helper.setAttribute('tabindex', '0');
+          try {
+            helper.focus({ preventScroll: true });
+          } catch(e) {
+            helper.focus();
+          }
+        }
+        kbBtns.forEach(b => {
+          b.classList.add('active-kb');
+          b.innerHTML = '⌨️ KB: ON';
+          b.setAttribute('title', 'Keyboard is ON (Tap to Close)');
+        });
+      } else {
+        if (helper) {
+          helper.readOnly = true;
+          helper.setAttribute('readonly', 'readonly');
+          helper.setAttribute('inputmode', 'none');
+          helper.style.pointerEvents = 'none';
+          helper.setAttribute('tabindex', '-1');
+          helper.blur();
+        }
+        if (term) term.blur();
+        if (document.activeElement && (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT')) {
+          document.activeElement.blur();
+        }
+        kbBtns.forEach(b => {
+          b.classList.remove('active-kb');
+          b.innerHTML = '⌨️ KB: OFF';
+          b.setAttribute('title', 'Keyboard is OFF (Tap to Open)');
+        });
+      }
+
+      [40, 120, 280].forEach(delay => {
+        setTimeout(() => {
+          window.scrollTo(0, 0);
+          if (document.documentElement) document.documentElement.scrollTop = 0;
+          if (document.body) document.body.scrollTop = 0;
+          const termContainer = document.getElementById('terminal-container');
+          if (termContainer) termContainer.scrollTop = 0;
+          if (wasAtBottom && term && !isTouchScrolling && !isScrollbarDragging) {
+            term.scrollToBottom();
+            updateCustomScrollbar();
+          }
+        }, delay);
+      });
+    }
+
+    // Dedicated AGY Chat / Terminal Scrollbar Logic
+    function updateCustomScrollbar() {
+      if (!term || !term.buffer || !term.buffer.active) return;
+      const buf = term.buffer.active;
+      const track = document.getElementById('term-scroll-track');
+      const thumb = document.getElementById('term-scroll-thumb');
+      const scrollbar = document.getElementById('terminal-scrollbar');
+      const badge = document.getElementById('term-scroll-badge');
+      if (!track || !thumb || !scrollbar) return;
+
+      if (buf.baseY <= 0) {
+        scrollbar.style.opacity = '0.35';
+        thumb.style.height = '100%';
+        thumb.style.top = '0px';
+        return;
+      }
+
+      scrollbar.style.opacity = '0.9';
+      const trackHeight = track.clientHeight;
+      const totalLines = buf.baseY + term.rows;
+      const ratio = Math.max(0.04, term.rows / totalLines);
+      const thumbHeight = Math.max(44, Math.round(ratio * trackHeight));
+      thumb.style.height = `${thumbHeight}px`;
+
+      const maxTop = trackHeight - thumbHeight;
+      const progress = buf.baseY > 0 ? (buf.viewportY / buf.baseY) : 1;
+      const thumbTop = Math.min(maxTop, Math.max(0, Math.round(progress * maxTop)));
+      thumb.style.top = `${thumbTop}px`;
+
+      if (badge) {
+        badge.style.top = `${Math.min(trackHeight - 26, Math.max(0, thumbTop + (thumbHeight / 2) - 13))}px`;
+        const pct = Math.round(progress * 100);
+        if (pct >= 99) {
+          badge.innerText = '⤓ End (Prompt)';
+        } else if (pct <= 1) {
+          badge.innerText = '⤒ Top (0%)';
+        } else {
+          badge.innerText = `L${buf.viewportY} (${pct}%)`;
+        }
+      }
+    }
+
+    function setupCustomScrollbar() {
+      const scrollbar = document.getElementById('terminal-scrollbar');
+      const track = document.getElementById('term-scroll-track');
+      const thumb = document.getElementById('term-scroll-thumb');
+      if (!scrollbar || !track || !thumb) return;
+
+      function handleMove(clientY) {
+        if (!term || !term.buffer || !term.buffer.active) return;
+        const buf = term.buffer.active;
+        if (buf.baseY <= 0) return;
+
+        const trackRect = track.getBoundingClientRect();
+        const trackHeight = track.clientHeight;
+        const thumbHeight = thumb.offsetHeight;
+        const maxTop = trackHeight - thumbHeight;
+        if (maxTop <= 0) return;
+
+        let clickY = clientY - trackRect.top - (thumbHeight / 2);
+        let clampedY = Math.max(0, Math.min(maxTop, clickY));
+        const progress = clampedY / maxTop;
+        const targetLine = Math.round(progress * buf.baseY);
+
+        term.scrollToLine(targetLine);
+        updateCustomScrollbar();
+        updateScrollIndicator();
+      }
+
+      function onPointerDown(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        isScrollbarDragging = true;
+        scrollbar.classList.add('dragging');
+        const cy = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0].clientY);
+        if (cy !== undefined) handleMove(cy);
+
+        const onPointerMove = (ev) => {
+          if (!isScrollbarDragging) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          const moveY = ev.clientY !== undefined ? ev.clientY : (ev.touches && ev.touches[0].clientY);
+          if (moveY !== undefined) handleMove(moveY);
+        };
+
+        const onPointerUp = (ev) => {
+          isScrollbarDragging = false;
+          scrollbar.classList.remove('dragging');
+          window.removeEventListener('mousemove', onPointerMove);
+          window.removeEventListener('mouseup', onPointerUp);
+          window.removeEventListener('touchmove', onPointerMove);
+          window.removeEventListener('touchend', onPointerUp);
+          window.removeEventListener('touchcancel', onPointerUp);
+        };
+
+        window.addEventListener('mousemove', onPointerMove, { passive: false });
+        window.addEventListener('mouseup', onPointerUp, { passive: false });
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('touchend', onPointerUp, { passive: false });
+        window.addEventListener('touchcancel', onPointerUp, { passive: false });
+      }
+
+      scrollbar.addEventListener('mousedown', onPointerDown);
+      scrollbar.addEventListener('touchstart', onPointerDown, { passive: false });
+    }
+
+    // High-Performance Momentum Touch Scroll on Terminal (Safari iOS Optimized)
+    function setupTerminalTouchScroll() {
+      const container = document.getElementById('terminal-container');
+      if (!container) return;
+
+      let touchStartY = 0;
+      let touchStartX = 0;
+      let touchLastY = 0;
+      let touchLastTime = 0;
+      let touchVelocityY = 0;
+      let momentumRaf = null;
+      let accumulatedDelta = 0;
+
+      container.addEventListener('touchstart', (e) => {
+        if (e.target.closest('#terminal-scrollbar') || e.target.closest('#reconnect-overlay') || e.target.closest('#btn-scroll-bottom') || e.target.closest('.key-btn')) {
+          return;
+        }
+        if (e.touches.length !== 1) return;
+
+        if (momentumRaf) {
+          cancelAnimationFrame(momentumRaf);
+          momentumRaf = null;
+        }
+
+        const t = e.touches[0];
+        touchStartY = t.clientY;
+        touchStartX = t.clientX;
+        touchLastY = t.clientY;
+        touchLastTime = Date.now();
+        touchVelocityY = 0;
+        isTouchScrolling = false;
+        accumulatedDelta = 0;
+      }, { passive: true });
+
+      container.addEventListener('touchmove', (e) => {
+        if (e.target.closest('#terminal-scrollbar') || e.target.closest('#reconnect-overlay') || e.target.closest('#btn-scroll-bottom')) {
+          return;
+        }
+        if (e.touches.length !== 1) return;
+
+        const t = e.touches[0];
+        const currentY = t.clientY;
+        const currentX = t.clientX;
+        const totalDy = Math.abs(currentY - touchStartY);
+        const totalDx = Math.abs(currentX - touchStartX);
+
+        if (!isTouchScrolling && totalDy > 5 && totalDy > totalDx) {
+          isTouchScrolling = true;
+        }
+
+        if (isTouchScrolling) {
+          if (e.cancelable) e.preventDefault(); // Prevents iOS bounce & suppresses synthetic mousedown/click!
+
+          const dy = currentY - touchLastY;
+          const now = Date.now();
+          const dt = Math.max(1, now - touchLastTime);
+          const instantV = dy / dt;
+          touchVelocityY = 0.5 * touchVelocityY + 0.5 * instantV;
+          touchLastY = currentY;
+          touchLastTime = now;
+
+          // Dragging down (dy > 0) scrolls UP into chat history (negative lines)
+          accumulatedDelta -= dy;
+
+          const cellHeight = (term && term._core && term._core._renderService && term._core._renderService.dimensions && term._core._renderService.dimensions.css.cell.height) || 16;
+          // Responsive 1.6x scroll speed multiplier for natural mobile terminal touch feel
+          const lines = Math.trunc((accumulatedDelta * 1.6) / cellHeight);
+          if (lines !== 0) {
+            term.scrollLines(lines);
+            accumulatedDelta -= (lines * cellHeight) / 1.6;
+            updateScrollIndicator();
+            updateCustomScrollbar();
+          }
+        }
+      }, { passive: false });
+
+      container.addEventListener('touchend', (e) => {
+        if (isTouchScrolling) {
+          if (e.cancelable) e.preventDefault(); // Prevents synthesized click on iOS Safari
+
+          // Momentum inertia physics
+          let v = touchVelocityY * 18;
+          if (Math.abs(v) > 1.0) {
+            const cellHeight = (term && term._core && term._core._renderService && term._core._renderService.dimensions && term._core._renderService.dimensions.css.cell.height) || 16;
+            let decay = 0.93;
+
+            function runMomentum() {
+              v *= decay;
+              accumulatedDelta -= v;
+              const lines = Math.trunc((accumulatedDelta * 1.6) / cellHeight);
+              if (lines !== 0) {
+                term.scrollLines(lines);
+                accumulatedDelta -= (lines * cellHeight) / 1.6;
+                updateScrollIndicator();
+                updateCustomScrollbar();
+              }
+
+              if (Math.abs(v) > 0.35) {
+                momentumRaf = requestAnimationFrame(runMomentum);
+              } else {
+                momentumRaf = null;
+              }
+            }
+            momentumRaf = requestAnimationFrame(runMomentum);
+          }
+
+          setTimeout(() => { isTouchScrolling = false; }, 100);
+        }
+      }, { passive: false });
+
+      // Smart tap detection on terminal for web links on mobile touchscreens
+      let tapStartTime = 0;
+      let tapStartX = 0;
+      let tapStartY = 0;
+
+      container.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches.length === 1) {
+          tapStartTime = Date.now();
+          tapStartX = e.touches[0].clientX;
+          tapStartY = e.touches[0].clientY;
+        }
+      }, { passive: true });
+
+      container.addEventListener('touchend', (e) => {
+        if (isTouchScrolling) return;
+        const dt = Date.now() - tapStartTime;
+        const touch = e.changedTouches && e.changedTouches[0];
+        if (touch && dt < 450) {
+          const dx = Math.abs(touch.clientX - tapStartX);
+          const dy = Math.abs(touch.clientY - tapStartY);
+          if (dx < 12 && dy < 12) {
+            const url = findLinkAtEvent(touch);
+            if (url) {
+              e.preventDefault();
+              openTerminalLinkSafely(url, e);
+            }
+          }
+        } else if (touch && dt >= 500) {
+          // Long-press on mobile touch screen pastes directly into terminal
+          const dx = Math.abs(touch.clientX - tapStartX);
+          const dy = Math.abs(touch.clientY - tapStartY);
+          if (dx < 16 && dy < 16) {
+            if (!term || !term.hasSelection()) {
+              e.preventDefault();
+              directPaste();
+            }
+          }
+        }
+      }, { passive: false });
+
+      // Click handler for mouse & desktop web link redirects
+      container.addEventListener('click', (e) => {
+        if (e.target.closest('#terminal-scrollbar') || e.target.closest('#reconnect-overlay') || e.target.closest('#btn-scroll-bottom') || e.target.closest('.key-btn') || e.target.closest('.redirect-modal-box')) {
+          return;
+        }
+        const url = findLinkAtEvent(e);
+        if (url) {
+          e.preventDefault();
+          openTerminalLinkSafely(url, e);
+        }
+      });
+    }
+
+    let resizeDebounceTimer = null;
+    let lastSentCols = 0;
+    let lastSentRows = 0;
+
+    function onResize(immediate = false) {
+      if (!term || !fitAddon) return;
+      if (!immediate) {
+        clearTimeout(resizeDebounceTimer);
+        resizeDebounceTimer = setTimeout(() => onResize(true), 120);
+        return;
+      }
+      try {
+        const wasAtBottom = isUserAtBottom();
+        fitAddon.fit();
+        updateCustomScrollbar();
+
+        const isMobileTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.innerWidth <= 768);
+        const colsChanged = (term.cols !== lastSentCols);
+        const rowsChanged = (term.rows !== lastSentRows);
+        const isKeyboardAction = isKeyboardToggling || keyboardActive || (window.visualViewport && window.visualViewport.height < window.innerHeight * 0.82);
+
+        // Suppress SIGWINCH to PTY when columns have NOT changed on mobile/touch.
+        // Opening/closing soft keyboard changes rows, but cols remains identical.
+        // Sending SIGWINCH causes agy to clear screen and reprint its entire chat backlog!
+        if (isMobileTouch && !colsChanged && (isKeyboardAction || rowsChanged)) {
+          if (wasAtBottom && !isTouchScrolling && !isScrollbarDragging) {
+            term.scrollToBottom();
+            updateCustomScrollbar();
+          }
+          return;
+        }
+
+        if (term.cols > 0 && term.rows > 0 && (colsChanged || rowsChanged)) {
+          lastSentCols = term.cols;
+          lastSentRows = term.rows;
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'resize',
+              cols: term.cols,
+              rows: term.rows
+            }));
+            const text = document.getElementById('status-text');
+            if (text && !text.innerText.startsWith('DISCONNECTED')) {
+              text.innerText = `ONLINE (${term.cols}x${term.rows} // ${activeSessionId})`;
+            }
+          }
+        }
+
+        if (wasAtBottom && !isTouchScrolling && !isScrollbarDragging) {
+          term.scrollToBottom();
+          updateCustomScrollbar();
+        }
+      } catch (e) {}
+    }
+
+    function setupVisualViewport() {
+      function handleViewport() {
+        const vv = window.visualViewport;
+        const height = vv ? Math.round(vv.height) : window.innerHeight;
+
+        document.documentElement.style.setProperty('--app-height', `${height}px`);
+        if (document.body) {
+          document.body.style.height = `${height}px`;
+        }
+
+        const isKeyboardOpen = vv ? (vv.height < window.innerHeight * 0.78) : false;
+        const keybar = document.getElementById('mobile-keybar');
+        if (keybar) {
+          keybar.style.paddingBottom = isKeyboardOpen ? '4px' : 'max(4px, env(safe-area-inset-bottom))';
+        }
+
+        onResize(false);
+        // Only auto-scroll to bottom if user is NOT actively touch scrolling or using the scrollbar!
+        if (!isTouchScrolling && !isScrollbarDragging && isUserAtBottom()) {
+          term.scrollToBottom();
+        }
+        updateCustomScrollbar();
+      }
+
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', handleViewport);
+      }
+      window.addEventListener('resize', () => handleViewport());
+      window.addEventListener('orientationchange', () => {
+        lastSentCols = 0; // Trigger full resize on orientation change
+        setTimeout(handleViewport, 150);
+      });
+
+      handleViewport();
+    }
+
+    // Touch Handling for Mobile Keybar: Allows Smooth Horizontal Scrolling + Instant Taps
+    function setupTouchKeybar() {
+      const bar = document.getElementById('mobile-keybar');
+      if (!bar) return;
+
+      bar.querySelectorAll('.key-btn').forEach(btn => {
+        let startX = 0;
+        let startY = 0;
+        let isScroll = false;
+        let startTime = 0;
+
+        btn.addEventListener('touchstart', (e) => {
+          if (e.touches.length > 1) return;
+          const touch = e.touches[0];
+          startX = touch.clientX;
+          startY = touch.clientY;
+          isScroll = false;
+          startTime = Date.now();
+          // Do NOT call e.preventDefault() here! Native horizontal scrolling of toolbar is preserved!
+        }, { passive: true });
+
+        btn.addEventListener('touchmove', (e) => {
+          if (isScroll) return;
+          const touch = e.touches[0];
+          const dx = Math.abs(touch.clientX - startX);
+          const dy = Math.abs(touch.clientY - startY);
+          if (dx > 7 || dy > 7) {
+            isScroll = true; // User is scrolling horizontally, not tapping
+          }
+        }, { passive: true });
+
+        btn.addEventListener('touchend', (e) => {
+          if (!isScroll && (Date.now() - startTime < 450)) {
+            e.preventDefault();
+            btn.click();
+          }
+        }, { passive: false });
+      });
+
+      // Quick scroll-bottom fab touch handler
+      const fab = document.getElementById('btn-scroll-bottom');
+      if (fab) {
+        fab.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          jumpToBottom();
+        }, { passive: false });
+      }
+    }
+
+    // ==========================================
+    // Tactile Virtual Joystick Engine for Arrow Keys
+    // ==========================================
+    let currentNavMode = localStorage.getItem('droidian_term_nav_mode') || 'joystick';
+
+    function setNavMode(mode) {
+      currentNavMode = mode;
+      localStorage.setItem('droidian_term_nav_mode', mode);
+      applyNavMode();
+      showTerminalToast(mode === 'joystick' ? '🕹️ Joystick Mode' : '◀▲▼▶ Buttons Mode');
+    }
+
+    function applyNavMode() {
+      const joy = document.getElementById('joystick-container');
+      const arrowBtns = document.querySelectorAll('.classic-arrow-btn');
+      const btnJoy = document.getElementById('btn-mode-joystick');
+      const btnBtns = document.getElementById('btn-mode-buttons');
+
+      if (currentNavMode === 'joystick') {
+        if (joy) joy.style.display = 'flex';
+        arrowBtns.forEach(b => { b.style.display = 'none'; });
+        if (btnJoy) btnJoy.classList.add('btn-accent');
+        if (btnBtns) btnBtns.classList.remove('btn-accent');
+      } else {
+        if (joy) joy.style.display = 'none';
+        arrowBtns.forEach(b => { b.style.display = 'inline-block'; });
+        if (btnJoy) btnJoy.classList.remove('btn-accent');
+        if (btnBtns) btnBtns.classList.add('btn-accent');
+      }
+    }
+
+    function setupJoystick() {
+      const base = document.getElementById('joystick-base');
+      const knob = document.getElementById('joystick-knob');
+      if (!base || !knob) return;
+
+      const arrowUp = document.getElementById('joy-arrow-up');
+      const arrowDown = document.getElementById('joy-arrow-down');
+      const arrowLeft = document.getElementById('joy-arrow-left');
+      const arrowRight = document.getElementById('joy-arrow-right');
+
+      let isInteracting = false;
+      let centerX = 0;
+      let centerY = 0;
+      let currentDir = null;
+      let repeatTimer = null;
+      let repeatIntervalTimer = null;
+      let currentIntervalMs = 150;
+
+      const MAX_RADIUS = 16; // Maximum puck displacement from center in px
+      const DEADZONE = 5;    // Deadzone in px before triggering direction
+
+      function setDirectionHighlight(dir) {
+        if (arrowUp) arrowUp.classList.toggle('active-dir', dir === 'UP');
+        if (arrowDown) arrowDown.classList.toggle('active-dir', dir === 'DOWN');
+        if (arrowLeft) arrowLeft.classList.toggle('active-dir', dir === 'LEFT');
+        if (arrowRight) arrowRight.classList.toggle('active-dir', dir === 'RIGHT');
+      }
+
+      function triggerArrow(dir) {
+        if (!dir) return;
+        sendSpecial(dir);
+        if (navigator.vibrate) {
+          try { navigator.vibrate(8); } catch(e) {}
+        }
+      }
+
+      function startRepeat(dir, intervalMs) {
+        clearTimeout(repeatTimer);
+        clearInterval(repeatIntervalTimer);
+        currentIntervalMs = intervalMs;
+
+        repeatTimer = setTimeout(() => {
+          triggerArrow(dir);
+          repeatIntervalTimer = setInterval(() => {
+            triggerArrow(dir);
+          }, currentIntervalMs);
+        }, 280);
+      }
+
+      function updateRepeatSpeed(intervalMs) {
+        if (currentIntervalMs !== intervalMs && repeatIntervalTimer) {
+          currentIntervalMs = intervalMs;
+          clearInterval(repeatIntervalTimer);
+          repeatIntervalTimer = setInterval(() => {
+            triggerArrow(currentDir);
+          }, currentIntervalMs);
+        }
+      }
+
+      function stopRepeat() {
+        clearTimeout(repeatTimer);
+        clearInterval(repeatIntervalTimer);
+        repeatTimer = null;
+        repeatIntervalTimer = null;
+        currentDir = null;
+        setDirectionHighlight(null);
+      }
+
+      function handleMove(clientX, clientY) {
+        const dx = clientX - centerX;
+        const dy = clientY - centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        let clampedX = dx;
+        let clampedY = dy;
+        if (dist > MAX_RADIUS) {
+          clampedX = (dx / dist) * MAX_RADIUS;
+          clampedY = (dy / dist) * MAX_RADIUS;
+        }
+
+        knob.style.transform = `translate(${clampedX}px, ${clampedY}px)`;
+
+        if (dist < DEADZONE) {
+          stopRepeat();
+          return;
+        }
+
+        const angle = Math.atan2(-dy, dx) * (180 / Math.PI);
+        let newDir = null;
+
+        if (angle >= 45 && angle < 135) {
+          newDir = 'UP';
+        } else if (angle >= -135 && angle < -45) {
+          newDir = 'DOWN';
+        } else if (angle >= -45 && angle < 45) {
+          newDir = 'RIGHT';
+        } else {
+          newDir = 'LEFT';
+        }
+
+        const pushRatio = Math.min(1.0, (dist - DEADZONE) / (MAX_RADIUS - DEADZONE));
+        const dynamicInterval = Math.round(180 - pushRatio * 125);
+
+        if (newDir !== currentDir) {
+          currentDir = newDir;
+          setDirectionHighlight(newDir);
+          triggerArrow(newDir);
+          startRepeat(newDir, dynamicInterval);
+        } else {
+          updateRepeatSpeed(dynamicInterval);
+        }
+      }
+
+      function onStart(e) {
+        if (isInteracting) return;
+        isInteracting = true;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const rect = base.getBoundingClientRect();
+        centerX = rect.left + rect.width / 2;
+        centerY = rect.top + rect.height / 2;
+
+        base.classList.add('dragging');
+        knob.classList.add('dragging');
+
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        handleMove(clientX, clientY);
+
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('touchend', onEnd, { passive: false });
+        window.addEventListener('touchcancel', onEnd, { passive: false });
+        window.addEventListener('mousemove', onMove, { passive: false });
+        window.addEventListener('mouseup', onEnd, { passive: false });
+      }
+
+      function onMove(e) {
+        if (!isInteracting) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        handleMove(clientX, clientY);
+      }
+
+      function onEnd(e) {
+        if (!isInteracting) return;
+        isInteracting = false;
+
+        window.removeEventListener('touchmove', onMove);
+        window.removeEventListener('touchend', onEnd);
+        window.removeEventListener('touchcancel', onEnd);
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onEnd);
+
+        base.classList.remove('dragging');
+        knob.classList.remove('dragging');
+        knob.style.transform = 'translate(0px, 0px)';
+        stopRepeat();
+      }
+
+      base.addEventListener('touchstart', onStart, { passive: false });
+      base.addEventListener('mousedown', onStart, { passive: false });
+    }
+
+    // ==========================================
+    // Web Links & Redirection Engine
+    // ==========================================
+    let lastOpenedUrl = null;
+    let lastOpenedTime = 0;
+    let currentRedirectModalUrl = '';
+
+    function showTerminalToast(msg) {
+      const toast = document.getElementById('terminal-toast');
+      if (!toast) return;
+      toast.innerText = msg;
+      toast.classList.add('visible');
+      clearTimeout(toast._timer);
+      toast._timer = setTimeout(() => {
+        toast.classList.remove('visible');
+      }, 2500);
+    }
+
+    function showLinkRedirectModal(url) {
+      currentRedirectModalUrl = url;
+      const modal = document.getElementById('linkRedirectModal');
+      const urlBox = document.getElementById('modalRedirectUrl');
+      const openBtn = document.getElementById('btnModalOpenLink');
+      if (modal && urlBox && openBtn) {
+        urlBox.innerText = url;
+        openBtn.href = url;
+        modal.style.display = 'flex';
+      }
+    }
+
+    function closeLinkRedirectModal() {
+      const modal = document.getElementById('linkRedirectModal');
+      if (modal) modal.style.display = 'none';
+      currentRedirectModalUrl = '';
+    }
+
+    async function copyRedirectModalUrl() {
+      if (!currentRedirectModalUrl) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(currentRedirectModalUrl);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = currentRedirectModalUrl;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+        showTerminalToast("📋 URL copied to clipboard!");
+      } catch (e) {
+        showTerminalToast("Failed to copy URL");
+      }
+    }
+
+    function findLinkAtEvent(e) {
+      if (!term || !term.buffer || !term.buffer.active) return null;
+      const clientX = e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? (e.changedTouches && e.changedTouches[0]?.clientX);
+      const clientY = e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? (e.changedTouches && e.changedTouches[0]?.clientY);
+      if (clientX === undefined || clientY === undefined) return null;
+
+      const screenElem = document.querySelector('.xterm-screen') || (term.element && term.element.querySelector('.xterm-screen'));
+      if (!screenElem) return null;
+      const rect = screenElem.getBoundingClientRect();
+      if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
+
+      const cellWidth = (term._core && term._core._renderService && term._core._renderService.dimensions && term._core._renderService.dimensions.css && term._core._renderService.dimensions.css.cell && term._core._renderService.dimensions.css.cell.width) || (rect.width / term.cols);
+      const cellHeight = (term._core && term._core._renderService && term._core._renderService.dimensions && term._core._renderService.dimensions.css && term._core._renderService.dimensions.css.cell && term._core._renderService.dimensions.css.cell.height) || (rect.height / term.rows);
+
+      const col = Math.floor((clientX - rect.left) / cellWidth);
+      const row = Math.floor((clientY - rect.top) / cellHeight);
+      const bufferY = row + term.buffer.active.ydisp;
+
+      if (bufferY < 0 || bufferY >= term.buffer.active.length) return null;
+
+      // Unwind wrapped lines to capture full multi-line URLs
+      let startY = bufferY;
+      while (startY > 0 && term.buffer.active.getLine(startY)?.isWrapped) {
+        startY--;
+      }
+
+      let fullText = '';
+      const lineOffsets = [];
+      let curY = startY;
+      while (curY < term.buffer.active.length) {
+        const line = term.buffer.active.getLine(curY);
+        if (!line) break;
+        const str = line.translateToString(true);
+        lineOffsets.push({ lineIdx: curY, startOffset: fullText.length, length: str.length });
+        fullText += str;
+        curY++;
+        if (curY < term.buffer.active.length && !term.buffer.active.getLine(curY)?.isWrapped) {
+          break;
+        }
+      }
+
+      let targetOffset = -1;
+      for (const lo of lineOffsets) {
+        if (lo.lineIdx === bufferY) {
+          targetOffset = lo.startOffset + col;
+          break;
+        }
+      }
+      if (targetOffset === -1) return null;
+
+      // Regex matching URLs with http/https, www., or IP/localhost dev ports
+      const urlRegex = /(?:https?:\/\/|www\.)[^\s"'<>()]+|(?:localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|100\.\d+\.\d+\.\d+|172\.\d+\.\d+\.\d+):\d+[^\s"'<>()]*/gi;
+      let match;
+      while ((match = urlRegex.exec(fullText)) !== null) {
+        let matchedUrl = match[0].replace(/[.,;:!?)]+$/, '');
+        const start = match.index;
+        const end = start + matchedUrl.length;
+        if (targetOffset >= start && targetOffset <= end) {
+          return matchedUrl;
+        }
+      }
+
+      return null;
+    }
+
+    function openTerminalLinkSafely(url, event) {
+      if (event) {
+        try { event.preventDefault(); } catch (e) {}
+        try { event.stopPropagation(); } catch (e) {}
+      }
+
+      if (!url) return;
+      let cleanUrl = url.trim();
+      if (!/^https?:\/\//i.test(cleanUrl)) {
+        cleanUrl = 'http://' + cleanUrl;
+      }
+
+      const now = Date.now();
+      if (cleanUrl === lastOpenedUrl && (now - lastOpenedTime < 800)) {
+        return; // Prevent duplicate rapid openings
+      }
+      lastOpenedUrl = cleanUrl;
+      lastOpenedTime = now;
+
+      // Try direct window.open first
+      let opened = false;
+      try {
+        const win = window.open(cleanUrl, '_blank', 'noopener,noreferrer');
+        if (win && !win.closed && typeof win.closed !== 'undefined') {
+          opened = true;
+        }
+      } catch (e) {
+        console.warn("window.open failed:", e);
+      }
+
+      // Try anchor tag click as fallback
+      if (!opened) {
+        try {
+          const a = document.createElement('a');
+          a.href = cleanUrl;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          opened = true;
+        } catch (e) {}
+      }
+
+      if (opened) {
+        showTerminalToast(`⚡ Opening: ${cleanUrl}`);
+      } else {
+        // If popup was blocked by browser, show the interactive modal
+        showLinkRedirectModal(cleanUrl);
+      }
+    }
+
+    function initTerminal() {
+      restoreTabs();
+      updateFontSizeDisplay();
+
+      term = new Terminal({
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: currentFontSize,
+        lineHeight: 1.15,
+        cursorBlink: true,
+        cursorStyle: 'block',
+        theme: THEMES.cyberpunk,
+        allowTransparency: true,
+        scrollback: 10000,
+        scrollSensitivity: 2,
+        fastScrollSensitivity: 5,
+        fastScrollModifier: 'shift',
+        smoothScrollDuration: 0,
+        scrollOnUserInput: false // Do not scroll unexpectedly on random inputs
+      });
+
+      fitAddon = new FitAddon.FitAddon();
+      term.loadAddon(fitAddon);
+      const webLinksAddon = new WebLinksAddon.WebLinksAddon((event, uri) => {
+        openTerminalLinkSafely(uri, event);
+      });
+      term.loadAddon(webLinksAddon);
+
+      const container = document.getElementById('terminal');
+      container.innerHTML = '';
+      term.open(container);
+      fitAddon.fit();
+
+      // Configure helper textarea for iOS Safari: completely readonly and untargetable when KB is OFF
+      const helper = container.querySelector('.xterm-helper-textarea');
+      if (helper) {
+        helper.readOnly = true;
+        helper.setAttribute('readonly', 'readonly');
+        helper.setAttribute('inputmode', 'none');
+        helper.style.pointerEvents = 'none';
+        helper.setAttribute('tabindex', '-1');
+
+        // Override helper.focus: never let xterm internal events focus helper when keyboard is OFF
+        const origHelperFocus = helper.focus.bind(helper);
+        helper.focus = function(opts) {
+          if (keyboardActive) {
+            origHelperFocus(opts || { preventScroll: true });
+          }
+        };
+
+        helper.addEventListener('focus', () => {
+          if (!keyboardActive) {
+            helper.blur();
+          }
+        });
+        helper.addEventListener('blur', () => {
+          setTimeout(() => {
+            if (document.activeElement !== helper && keyboardActive) {
+              toggleKeyboard(false);
+            }
+          }, 250);
+        });
+        helper.addEventListener('paste', (e) => {
+          e.preventDefault();
+          const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+          if (text) {
+            sendRaw(text);
+            showTerminalToast('📋 Pasted');
+          } else {
+            directPaste();
+          }
+        });
+      }
+
+      // Override term.focus and term._core.focus: complete barrier against keyboard popups
+      const origTermFocus = term.focus.bind(term);
+      term.focus = function() {
+        if (keyboardActive) {
+          origTermFocus();
+        }
+      };
+
+      if (term._core) {
+        const origCoreFocus = term._core.focus.bind(term._core);
+        term._core.focus = function() {
+          if (keyboardActive) {
+            origCoreFocus();
+          }
+        };
+      }
+
+      // Direct paste via keyboard shortcuts: Ctrl+V, Cmd+V, Shift+Insert
+      term.attachCustomKeyEventHandler((e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+          if (e.type === 'keydown') {
+            directPaste();
+          }
+          return false; // Suppress xterm 0x16 character
+        }
+        if (e.shiftKey && e.key === 'Insert') {
+          if (e.type === 'keydown') {
+            directPaste();
+          }
+          return false;
+        }
+        return true;
+      });
+
+      // Direct right-click paste on desktop when no text is selected
+      const termContainer = document.getElementById('terminal-container');
+      if (termContainer) {
+        termContainer.addEventListener('contextmenu', (e) => {
+          if (term && term.hasSelection && term.hasSelection()) {
+            return; // Allow context menu to copy selected text
+          }
+          e.preventDefault();
+          directPaste();
+        });
+      }
+
+      // Global paste listener: captures native browser paste, context menu paste, or OS paste events
+      document.addEventListener('paste', (e) => {
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && !active.classList.contains('xterm-helper-textarea')) {
+          return;
+        }
+        e.preventDefault();
+        let text = '';
+        if (e.clipboardData) {
+          text = e.clipboardData.getData('text/plain');
+        }
+        if (text) {
+          sendRaw(text);
+          showTerminalToast('📋 Pasted');
+        } else {
+          directPaste();
+        }
+      });
+
+      // Window keydown listener for Ctrl+V / Cmd+V
+      window.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+          const active = document.activeElement;
+          if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && !active.classList.contains('xterm-helper-textarea')) {
+            return;
+          }
+          e.preventDefault();
+          directPaste();
+        }
+      });
+
+      term.onScroll(() => {
+        updateScrollIndicator();
+        updateCustomScrollbar();
+      });
+
+      // Handle user key input
+      term.onData(data => {
+        jumpToBottom();
+
+        if (ctrlActive) {
+          ctrlActive = false;
+          document.getElementById('key-ctrl').classList.remove('active-modifier');
+          const code = data.charCodeAt(0);
+          if (code >= 97 && code <= 122) { // a-z
+            sendControlChar(String.fromCharCode(code));
+            return;
+          }
+        }
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(data);
+        }
+      });
+
+      window.addEventListener('resize', () => onResize(false));
+      setupVisualViewport();
+      setupTouchKeybar();
+      setupJoystick();
+      applyNavMode();
+      setupCustomScrollbar();
+      setupTerminalTouchScroll();
+      updateCustomScrollbar();
+      connectWebSocket();
+    }
+
+    function connectWebSocket() {
+      if (autoReconnectTimer) {
+        clearTimeout(autoReconnectTimer);
+        autoReconnectTimer = null;
+      }
+
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const basePath = window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/';
+      const wsPath = (window.location.pathname.startsWith('/terminal') ? basePath : '/') + 'ws';
+      const url = `${proto}//${window.location.host}${wsPath}?session=${activeSessionId}&cols=${term ? term.cols : 100}&rows=${term ? term.rows : 30}`;
+
+      ws = new WebSocket(url);
+      ws.binaryType = "arraybuffer";
+
+      const badge = document.getElementById('status-badge');
+      const text = document.getElementById('status-text');
+      const overlay = document.getElementById('reconnect-overlay');
+
+      ws.onopen = () => {
+        if (badge) badge.classList.remove('disconnected');
+        if (text) text.innerText = `ONLINE (${term.cols}x${term.rows} // ${activeSessionId})`;
+        const topDot = document.getElementById('top-status-dot');
+        if (topDot) topDot.classList.remove('disconnected');
+        overlay.classList.remove('active');
+        isReplayingBacklog = true;
+        unreadLines = 0;
+        onResize();
+      };
+
+      ws.onmessage = (evt) => {
+        if (typeof evt.data === 'string') {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === 'replay_done') {
+              isReplayingBacklog = false;
+              setTimeout(() => {
+                term.scrollToBottom();
+                updateScrollIndicator();
+              }, 40);
+              return;
+            }
+          } catch (e) {
+            term.write(evt.data);
+            return;
+          }
+        }
+
+        const atBottomBefore = isUserAtBottom();
+        const raw = evt.data instanceof ArrayBuffer ? new Uint8Array(evt.data) : evt.data;
+
+        term.write(raw, () => {
+          if (isReplayingBacklog) {
+            clearTimeout(backlogEndTimer);
+            backlogEndTimer = setTimeout(() => {
+              isReplayingBacklog = false;
+              term.scrollToBottom();
+              updateScrollIndicator();
+              updateCustomScrollbar();
+            }, 60);
+          } else if (atBottomBefore) {
+            term.scrollToBottom();
+            updateCustomScrollbar();
+          } else {
+            unreadLines++;
+            const unreadEl = document.getElementById('unread-count');
+            if (unreadEl) {
+              unreadEl.innerText = unreadLines > 99 ? '99+' : `+${unreadLines}`;
+              unreadEl.style.display = 'inline-block';
+            }
+            updateScrollIndicator();
+            updateCustomScrollbar();
+          }
+        });
+      };
+
+      ws.onclose = () => {
+        if (badge) badge.classList.add('disconnected');
+        if (text) text.innerText = 'DISCONNECTED (Reconnecting...)';
+        const topDot = document.getElementById('top-status-dot');
+        if (topDot) topDot.classList.add('disconnected');
+        overlay.classList.add('active');
+
+        // Automatic reconnection in background every 2.5 seconds
+        if (!autoReconnectTimer) {
+          autoReconnectTimer = setTimeout(() => {
+            autoReconnectTimer = null;
+            reconnectTerminal(true);
+          }, 2500);
+        }
+      };
+
+      ws.onerror = () => {
+        if (badge) badge.classList.add('disconnected');
+        if (text) text.innerText = 'ERROR';
+        const topDot = document.getElementById('top-status-dot');
+        if (topDot) topDot.classList.add('disconnected');
+      };
+    }
+
+    function reconnectTerminal(resetTerm = true) {
+      if (autoReconnectTimer) {
+        clearTimeout(autoReconnectTimer);
+        autoReconnectTimer = null;
+      }
+      document.getElementById('reconnect-overlay').classList.remove('active');
+      if (ws) {
+        try { ws.onclose = null; ws.close(); } catch(e){}
+      }
+      if (resetTerm && term) {
+        term.reset();
+      }
+      connectWebSocket();
+    }
+
+    // Touch Helpers
+    function sendRaw(str) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(str);
+      }
+      jumpToBottom();
+      if (term && keyboardActive) term.focus();
+    }
+
+    async function directPaste() {
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text) {
+            sendRaw(text);
+            showTerminalToast('📋 Pasted');
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("Direct clipboard read unavailable:", err);
+        showTerminalToast('⚠️ Clipboard access denied');
+      }
+    }
+
+    function pasteClipboard() {
+      return directPaste();
+    }
+
+    function sendSpecial(key) {
+      const keys = {
+        'ESC': '\x1b',
+        'TAB': '\t',
+        'UP': '\x1b[A',
+        'DOWN': '\x1b[B',
+        'RIGHT': '\x1b[C',
+        'LEFT': '\x1b[D'
+      };
+      if (keys[key]) sendRaw(keys[key]);
+    }
+
+    function sendControlChar(char) {
+      const lower = char.toLowerCase();
+      const code = lower.charCodeAt(0) - 96; // 'a' -> 1, 'c' -> 3, 'z' -> 26
+      if (code >= 1 && code <= 26) {
+        sendRaw(String.fromCharCode(code));
+      }
+    }
+
+    function toggleCtrl() {
+      ctrlActive = !ctrlActive;
+      document.getElementById('key-ctrl').classList.toggle('active-modifier', ctrlActive);
+      if (term && keyboardActive) term.focus();
+    }
+
+    function toggleAlt() {
+      altActive = !altActive;
+      document.getElementById('key-alt').classList.toggle('active-modifier', altActive);
+      if (term && keyboardActive) term.focus();
+    }
+
+    // Font Controls
+    document.getElementById('btn-font-inc').onclick = () => {
+      currentFontSize = Math.min(24, currentFontSize + 1);
+      if (term) term.options.fontSize = currentFontSize;
+      updateFontSizeDisplay();
+      onResize();
+    };
+
+    document.getElementById('btn-font-dec').onclick = () => {
+      currentFontSize = Math.max(8, currentFontSize - 1);
+      if (term) term.options.fontSize = currentFontSize;
+      updateFontSizeDisplay();
+      onResize();
+    };
+
+    // Fullscreen Toggle
+    document.getElementById('btn-fullscreen').onclick = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    };
+
+    // Theme Switcher
+    document.getElementById('theme-select').onchange = (e) => {
+      const selected = e.target.value;
+      if (THEMES[selected]) {
+        term.options.theme = THEMES[selected];
+        document.getElementById('terminal-container').style.backgroundColor = THEMES[selected].background;
+      }
+    };
+
+    // Live System Stats Polling
+    async function updateSystemStats() {
+      try {
+        const res = await fetch('api/system');
+        const data = await res.json();
+        if (data && !data.error) {
+          const chipCpu = document.getElementById('chip-cpu');
+          const chipRam = document.getElementById('chip-ram');
+          const chipBat = document.getElementById('chip-bat');
+          const chipUp = document.getElementById('chip-up');
+          if (chipCpu) chipCpu.innerHTML = `CPU: <span>${data.cpu_percent}%</span>`;
+          if (chipRam) chipRam.innerHTML = `RAM: <span>${data.memory.used_mb}M/${data.memory.total_mb}M</span>`;
+          if (chipBat && data.battery && data.battery.percent !== null) {
+            const batText = `${data.battery.percent}%${data.battery.charging ? ' ⚡' : ''}`;
+            chipBat.innerHTML = `BAT: <span>${batText}</span>`;
+          }
+          if (chipUp) chipUp.innerHTML = `UP: <span>${data.uptime}</span>`;
+        }
+      } catch (err) {}
+    }
+
+    setInterval(updateSystemStats, 3000);
+    updateSystemStats();
+
+    // Session Tabs Management
+    function createNewTab() {
+      tabCount++;
+      const newBtn = document.querySelector('.btn-new-tab');
+      
+      const tab = document.createElement('div');
+      tab.className = 'tab-item';
+      tab.id = `tab-${tabCount}`;
+      tab.innerHTML = `<span>🐚 Session ${tabCount}</span> <span class="tab-close" onclick="closeTab(event, ${tabCount})">×</span>`;
+      tab.onclick = () => switchTab(tabCount);
+      
+      if (newBtn && newBtn.parentNode) {
+        newBtn.parentNode.insertBefore(tab, newBtn);
+      }
+      saveTabsState();
+      switchTab(tabCount);
+    }
+
+    function switchTab(idx) {
+      document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+      const target = document.getElementById(`tab-${idx}`);
+      if (target) target.classList.add('active');
+      activeSessionId = `session-${idx}`;
+      saveTabsState();
+      reconnectTerminal(true);
+    }
+
+    async function closeTab(e, idx) {
+      e.stopPropagation();
+      const sId = `session-${idx}`;
+      if (!confirm(`Terminate and close Session ${idx}? Running tasks in this session will stop.`)) return;
+
+      try {
+        await fetch('api/sessions/kill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session: sId })
+        });
+      } catch (err) {}
+
+      const target = document.getElementById(`tab-${idx}`);
+      if (target) target.remove();
+      saveTabsState();
+
+      if (activeSessionId === sId) {
+        const remaining = document.querySelectorAll('.tab-item');
+        if (remaining.length > 0) {
+          const firstId = parseInt(remaining[0].id.replace('tab-', '')) || 1;
+          switchTab(firstId);
+        } else {
+          switchTab(1);
+        }
+      }
+    }
+
+    async function resetCurrentSession() {
+      if (!confirm(`Terminate and restart ${activeSessionId}? Any active command in this session will be killed.`)) return;
+      try {
+        await fetch('api/sessions/kill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session: activeSessionId })
+        });
+      } catch (err) {}
+      reconnectTerminal(true);
+    }
+
+    // Startup
+    window.addEventListener('load', () => {
+      initTerminal();
+    });
+  </script>
+</body>
+</html>
